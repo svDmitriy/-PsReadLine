@@ -1,0 +1,174 @@
+Введение
+Работа в стандартной консоли Windows часто сводится к монотонному набору команд, постоянному перелистыванию истории стрелками и борьбе с опечатками, которые обнаруживаются только после ошибки. 
+Это медленно, неудобно и, лично меня откровенно раздражает, особенно после работы в "продвинутых" терминалы в Linux или macOS.
+
+Относительно недавно нашёл PsReadLine. Это модуль для PowerShell, полностью заменяет механизм ввода с клавиатуры, добавляя полезные функции, которые хотелось бы видеть в терминале по умолчанию. 
+В статье хочу не просто рассказать о модуле, а привести готовый конфиг: "предсказание" команд на основе истории, привычные хоткеи и удобный поиск.
+
+К концу статьи у Вас будет файл Microsoft.PowerShell_profile.ps1 с готовой конфигурацией, которая сделает работу комфортнее и удобнее. Приступим...
+
+1. Установка PsReadLine
+Безусловно, начать стоит с установки модуля. Самый простой способ - встроенный менеджер пакетов PowerShellGet:
+
+Install-Module -Name PSReadLine -Force -AllowPrerelease
+-Force - гарантирует установку, даже если есть конфликты.
+
+-AllowPrerelease - позволяет установить самую свежую версию. 
+Это важно, потому что именно в ней содержатся самые крутые фичи, вроде предсказания команд (Prediction), о которых мы поговорим дальше. Не пугайтесь слова "prerelease", модуль стабилен.
+
+Возможно Вы столкнетесь с ошибкой: eсли у Вас старая версия PowerShellGet, команда может запросить обновление NuGet или другого поставщика. 
+Смело соглашайтесь, вводя Y.
+
+Можем проверить установку:
+
+Get-Module PSReadLine -ListAvailable
+Команда должна показать информацию о установленной версии модуля.
+
+2. Создаём профиль PowerShell
+PsReadLine настраивается в вашем профиле PowerShell. Фактически, это скрипт, который выполняется каждый раз при запуске новой сессии. Если у Вас его нет - создадим.
+
+Выполните команду, чтобы узнать путь к Вашему профилю:
+
+echo $PROFILE
+Теперь проверим, существует ли файл по этому пути, и создадим его, если это не так:
+
+# Если файла нет, эта команда его создаст
+if (!(Test-Path $PROFILE)) {
+    New-Item -ItemType File -Path $PROFILE -Force
+}
+
+# Откроем профиль в блокноте для редактирования
+notepad $PROFILE
+Последняя команда откроет пустой файл в Блокноте. Всё, что мы будем добавлять дальше, нужно писать именно в этот файл.
+
+3. Пишем конфиг
+Скопируйте и вставьте следующий код в открытый файл профиля. Каждую секцию я подробно прокомментирую.
+
+# Импортируем модуль PsReadLine
+Import-Module PSReadLine
+
+# PsReadLine будет анализировать вашу историю и подсказывать следующую команду
+Set-PSReadLineOption -PredictionSource History
+# Плагин PredictionView делает эти подсказки осязаемыми
+Set-PSReadLineOption -PredictionViewStyle ListView
+
+# Эмуляция поиска по истории как в bash (Ctrl+R). Крайне удобно.
+Set-PSReadLineKeyHandler -Key Ctrl+r -Function ReverseSearchHistory
+
+# "Умное" завершение пути при нажатии на Ctrl+Space. Показывает все возможные варианты.
+Set-PSReadLineKeyHandler -Key Ctrl+Spacebar -Function MenuComplete
+После сохранения необходимо перезайти в PowerShell. 
+Теперь при вводе команды появляются подсказки на основе истории (серая строка внизу или справа, в зависимости от версии).
+
+4. Хоткеи и визуал
+Базовый конфиг - это хорошо, но ведь можно лучше. 
+Давайте добавим персональные настройки. Снова откроем профиль (notepad $PROFILE) и добавим в конец следующие блоки:
+
+# Копируем и вставляем как человек
+Set-PSReadLineKeyHandler -Key Ctrl+c -Function Copy
+Set-PSReadLineKeyHandler -Key Ctrl+v -Function Paste
+
+# Перемещение по строке как в современном текстовом редакторе
+Set-PSReadLineKeyHandler -Key Ctrl+LeftArrow -Function BackwardWord
+Set-PSReadLineKeyHandler -Key Ctrl+RightArrow -Function NextWord
+Set-PSReadLineKeyHandler -Key Home -Function BeginningOfLine
+Set-PSReadLineKeyHandler -Key End -Function EndOfLine
+Меняем цвета на свой вкус:
+
+# Эта настройка меняет цвет подсказок на более приятный
+Set-PSReadLineOption -Colors @{
+    Command = 'Yellow'
+    Parameter = 'Green'
+    String = 'DarkCyan'
+    InlinePrediction = 'DarkGray'
+}
+Также, для быстрой проверки команд перед выполнением (ну а вдруг опечатки?) добавляем функцию:
+
+# Быстрая проверка команды перед выполнением клавишей F2
+Set-PSReadLineKeyHandler -Key F2 -ScriptBlock {
+    $line = $null
+    $cursor = $null
+    [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
+    
+    $firstWord = ($line -split '\s+')[0]
+    
+    if ($firstWord -and (Get-Command $firstWord -ErrorAction SilentlyContinue)) {
+        Write-Host " Command exists" -ForegroundColor Green -NoNewline
+    } elseif ($firstWord) {
+        Write-Host " Command NOT FOUND" -ForegroundColor Red -NoNewline
+    }
+    
+    [Microsoft.PowerShell.PSConsoleReadLine]::RedrawLine()
+}
+Результат и проверка
+После сохранения профиля и перезапуска PowerShell Ваша консоль должна работать принципиально по-новому.
+
+Давайте протестируем ключевые функции:
+
+Подсказки: введите git sta (если Вы хотя бы раз использовали git). Вы должны увидеть подсказку, например, git status.
+
+Поиск по истории: нажмите Ctrl+R. Внизу появится строка поиска. 
+Начните вводить часть любой команды, которую вы использовали ранее (например, install). PsReadLine будет показывать подходящие варианты из истории.
+
+Проверка корректности: введите команду с ошибкой, например Get-ChilItem и нажмите клавишу F2. В случае неправильного ввода Вы увидите
+
+Меню завершения: введите Get- и нажмите Ctrl+Space. Появится красивое меню со всеми возможными командами.
+
+Итоговый конфиг целиком:
+
+Вот как выглядит полный файл Microsoft.PowerShell_profile.ps1, который у вас должен получиться:
+
+# PsReadLine Configuration - The Ultimate Setup
+Import-Module PSReadLine
+
+# Prediction and Completion
+Set-PSReadLineOption -PredictionSource History
+Set-PSReadLineOption -PredictionViewStyle ListView
+Set-PSReadLineOption -ShowToolTips
+
+# Colors
+Set-PSReadLineOption -Colors @{
+    Command = 'Yellow'
+    Parameter = 'Green'
+    String = 'DarkCyan'
+    InlinePrediction = 'DarkGray'
+}
+
+# Key Handlers
+Set-PSReadLineKeyHandler -Key Ctrl+r -Function ReverseSearchHistory
+Set-PSReadLineKeyHandler -Key Ctrl+Spacebar -Function MenuComplete
+Set-PSReadLineKeyHandler -Key Tab -Function Complete
+Set-PSReadLineKeyHandler -Key Ctrl+c -Function Copy
+Set-PSReadLineKeyHandler -Key Ctrl+v -Function Paste
+Set-PSReadLineKeyHandler -Key Ctrl+LeftArrow -Function BackwardWord
+Set-PSReadLineKeyHandler -Key Ctrl+RightArrow -Function NextWord
+Set-PSReadLineKeyHandler -Key Home -Function BeginningOfLine
+Set-PSReadLineKeyHandler -Key End -Function EndOfLine
+
+# Быстрая проверка команды перед выполнением клавишей F2
+Set-PSReadLineKeyHandler -Key F2 -ScriptBlock {
+    $line = $null
+    $cursor = $null
+    [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
+    
+    $firstWord = ($line -split '\s+')[0]
+    
+    if ($firstWord -and (Get-Command $firstWord -ErrorAction SilentlyContinue)) {
+        Write-Host " Command exists" -ForegroundColor Green -NoNewline
+    } elseif ($firstWord) {
+        Write-Host " Command NOT FOUND" -ForegroundColor Red -NoNewline
+    }
+    
+    [Microsoft.PowerShell.PSConsoleReadLine]::RedrawLine()
+}
+Заключение
+Насколько необходимо "улучшать" терминал - вопрос открытый. В моем случае это было реализовано из желания "автоматизировать" всё, с чем приходится взаимодействовать. 
+Процесс настройки PsReadLine занимает 10-15 минут, но позволяет работать продуктивнее, меньше отвлекаться. Наиболее полезной добавленной функцией по праву считаю человеческое копирование и вставку...
+
+Особенно хочу отметить пользу для тех, кто мало работает с PowerShell (что меня и побудило найти что-то "вспомогательное"). 
+Фактически, PsReadLine работает как шпаргалка, которая компенсирует отсутствие регулярной практики. 
+Вместо того чтобы каждый раз заново гуглить синтаксис или листать историю стрелками, вы получаете контекстные подсказки прямо в процессе ввода.
+
+В статье используется модуль PsReadLine
+License: BSD 2-Clause "Simplified"
+Repository: https://github.com/PowerShell/PSReadLine
